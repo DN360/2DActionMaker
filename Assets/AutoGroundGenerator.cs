@@ -314,7 +314,7 @@ public class AutoGroundGenerator : MonoBehaviour {
 	bool isBlock(int x, int y) {
 		string t = mapData [x, y];
 		int num = GetKeyNum (t);
-		return  !(num < 0 || Sprites [num] == null);
+		return  !(num < 0 || Sprites [num] == null || SpriteColliderTypes[num] != ColliderType.Box);
 	}
 
 	bool isAlreadyColl(int x, int y, int type) {
