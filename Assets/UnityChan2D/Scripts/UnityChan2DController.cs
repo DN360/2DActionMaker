@@ -11,11 +11,14 @@ public class UnityChan2DController : MonoBehaviour
 
     private Animator m_animator;
     private BoxCollider2D m_boxcollier2D;
-    private Rigidbody2D m_rigidbody2D;
-    private bool m_isGround;
+    public Rigidbody2D m_rigidbody2D;
+	private bool m_isGround;
+	public bool m_isBoost;
     private const float m_centerY = 1.5f;
 
-    private State m_state = State.Normal;
+	private float ang = 0.05f; 
+
+    public State m_state = State.Normal;
 
     void Reset()
     {
@@ -32,7 +35,9 @@ public class UnityChan2DController : MonoBehaviour
 
         // Rigidbody2D
         m_rigidbody2D.gravityScale = 3.5f;
-        m_rigidbody2D.fixedAngle = true;
+		m_rigidbody2D.fixedAngle = true;
+		m_rigidbody2D.velocity = Vector2.zero;
+		ang = m_rigidbody2D.angularDrag;
 
         // BoxCollider2D
         m_boxcollier2D.size = new Vector2(1, 2.5f);
@@ -51,12 +56,13 @@ public class UnityChan2DController : MonoBehaviour
 
     void Update()
     {
-        if (m_state != State.Damaged)
-        {
-            float x = Input.GetAxis("Horizontal");
-            bool jump = Input.GetButtonDown("Jump");
-            Move(x, jump);
-        }
+		if (m_state != State.Damaged && !AutoGroundGenerator.ActionEnd) {
+			float x = Input.GetAxis ("Horizontal");
+			bool jump = Input.GetButtonDown ("Jump");
+			Move (x, jump);
+		} else if (AutoGroundGenerator.ActionEnd) {
+			Move(0, false);
+		}
     }
 
     void Move(float move, bool jump)
@@ -67,12 +73,29 @@ public class UnityChan2DController : MonoBehaviour
             transform.rotation = Quaternion.Euler(rot.x, Mathf.Sign(move) == 1 ? 0 : 180, rot.z);
         }
 
-        m_rigidbody2D.velocity = new Vector2(move * maxSpeed, m_rigidbody2D.velocity.y);
+		if (Mathf.Abs(m_rigidbody2D.velocity.x) < maxSpeed && Mathf.Abs(m_rigidbody2D.velocity.y) <= 0f) {
+			m_isBoost = false;
+		}
 
-        m_animator.SetFloat("Horizontal", move);
-        m_animator.SetFloat("Vertical", m_rigidbody2D.velocity.y);
-        m_animator.SetBool("isGround", m_isGround);
-
+		if (!m_isBoost) {
+			if (Mathf.Abs(m_rigidbody2D.velocity.x) > maxSpeed) {
+				if (Mathf.Abs (move) == 0) {
+					m_rigidbody2D.velocity = new Vector2 (m_rigidbody2D.velocity.x, m_rigidbody2D.velocity.y);
+				} else if (move * m_rigidbody2D.velocity.x < 0) {
+					m_rigidbody2D.velocity = new Vector2 (m_rigidbody2D.velocity.x * 0.99f, m_rigidbody2D.velocity.y);
+				} else {
+					m_rigidbody2D.velocity = new Vector2 (m_rigidbody2D.velocity.x, m_rigidbody2D.velocity.y);
+				}
+			} else {
+				m_rigidbody2D.velocity = new Vector2 (move * maxSpeed, m_rigidbody2D.velocity.y);
+			}
+			m_animator.SetFloat ("Horizontal", m_rigidbody2D.velocity.x);
+			m_animator.SetFloat ("Vertical", m_rigidbody2D.velocity.y);
+		} else {
+			m_animator.SetFloat ("Horizontal", m_rigidbody2D.velocity.x);
+			m_animator.SetFloat ("Vertical", m_rigidbody2D.velocity.y);
+		}
+		m_animator.SetBool ("isGround", m_isGround);
         if (jump && m_isGround)
         {
             m_animator.SetTrigger("Jump");
@@ -81,6 +104,12 @@ public class UnityChan2DController : MonoBehaviour
         }
     }
 
+	public void Boost(float x, float y) {
+		m_rigidbody2D.velocity = Vector2.zero;
+		m_rigidbody2D.AddForce(new Vector2(x, y) * jumpPower);
+		m_isBoost = true;
+	}
+
     void FixedUpdate()
     {
         Vector2 pos = transform.position;
@@ -88,8 +117,24 @@ public class UnityChan2DController : MonoBehaviour
         Vector2 groundArea = new Vector2(m_boxcollier2D.size.x * 0.49f, 0.05f);
 
         m_isGround = Physics2D.OverlapArea(groundCheck + groundArea, groundCheck - groundArea, whatIsGround);
+		if (m_isGround) {
+			if (m_rigidbody2D.velocity.x > maxSpeed) {
+				m_rigidbody2D.velocity = new Vector2 (m_rigidbody2D.velocity.x, m_rigidbody2D.velocity.y);
+			}
+			m_isBoost = false;
+		}
         m_animator.SetBool("isGround", m_isGround);
-    }
+
+	}
+
+	void OnTriggerEnter2D(Collider2D other)
+	{
+		if (other.tag == "DamageObject" && m_state == State.Normal)
+		{
+			m_state = State.Damaged;
+			StartCoroutine(INTERNAL_OnDamage());
+		}
+	}
 
     void OnTriggerStay2D(Collider2D other)
     {
@@ -124,7 +169,7 @@ public class UnityChan2DController : MonoBehaviour
         m_state = State.Normal;
     }
 
-    enum State
+    public enum State
     {
         Normal,
         Damaged,
